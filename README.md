@@ -62,5 +62,43 @@ python main.py "Sanity check the pipeline" --mode orchestrator --test-mode
 
 Note: Users can also enter their own keys directly in the web UI without setting environment variables.
 
+## Cyber Research Bot (GitHub → Discord)
+
+A second mode of this repo runs as a GitHub-driven cybersecurity research bot
+that posts to a Discord channel. It pulls from a curated set of security feeds
+(news, advisories, CISA KEV, NVD CVEs ≥7.0, vendor research, arXiv cs.CR),
+uses an LLM to score relevance and write short briefings, and posts the highest-
+signal items via a Discord webhook. It also accepts deep-dive research
+requests filed as GitHub Issues.
+
+**Set up:**
+1. Create a Discord webhook in your channel (Server Settings → Integrations → Webhooks).
+2. In this repo: Settings → Secrets and variables → Actions → add secrets:
+   - `CYBER_BOT_DISCORD_WEBHOOK_URL` — the webhook URL
+   - `ANTHROPIC_API_KEY` and/or `GOOGLE_API_KEY`
+3. (Optional) under *Variables*, set `CYBER_BOT_MODEL` to `claude` (default) or `gemini`.
+
+**What it does:**
+- `.github/workflows/cyber_research_digest.yml` — runs on cron (twice a day),
+  posts a digest of the top scored items to Discord, and commits an updated
+  dedup state file back to the repo so the same items aren't re-posted.
+- `.github/workflows/cyber_research_on_demand.yml` — fires when an issue is
+  opened with the `research-request` label. The bot rephrases the issue title
+  / `topic:` line into a research topic, narrows recent feed material to the
+  most relevant items, asks the LLM for an analyst-style writeup, and posts
+  the deep-dive to Discord. Use the *Cyber Research Request* issue template.
+
+**Run locally:**
+```
+pip install -r requirements.txt
+export DISCORD_WEBHOOK_URL=...   # webhook URL
+export ANTHROPIC_API_KEY=...
+python -m cyber_bot.digest --dry-run    # score + print without posting
+python -m cyber_bot.digest              # post a digest
+python -m cyber_bot.on_demand "BGP hijacking incidents this month" --dry-run
+```
+
+Sources are configured in `cyber_bot/config.py` — add or remove feeds there.
+
 ## Status/Contribution
 This is a super-early, experimental harness. There are a number of improvements to be worked out (i.e. dataset sharing between agents, key management, etc.), literature search, that would make this way more capable. If anyone wants to add these in, feel free!

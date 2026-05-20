@@ -1,0 +1,78 @@
+name: Cyber Research Digest
+
+on:
+  schedule:
+    # Twice daily, 13:00 and 01:00 UTC (~ morning/evening US).
+    - cron: "0 13 * * *"
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+    inputs:
+      top_k:
+        description: "Max number of items to post"
+        default: "8"
+      min_score:
+        description: "Minimum LLM relevance score (0-10)"
+        default: "6"
+      dry_run:
+        description: "Score but do not post"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # for committing updated state/posted.json
+
+concurrency:
+  group: cyber-research-digest
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run cyber research digest
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.CYBER_BOT_DISCORD_WEBHOOK_URL }}
+          CYBER_BOT_MODEL: ${{ vars.CYBER_BOT_MODEL || 'claude' }}
+          CYBER_BOT_CLAUDE_MODEL: ${{ vars.CYBER_BOT_CLAUDE_MODEL || 'claude-haiku-4-5-20251001' }}
+          CYBER_BOT_GEMINI_MODEL: ${{ vars.CYBER_BOT_GEMINI_MODEL || 'gemini-2.5-flash' }}
+        run: |
+          python -m cyber_bot.digest \
+            --top-k "${{ inputs.top_k || 8 }}" \
+            --min-score "${{ inputs.min_score || 6 }}" \
+            ${{ inputs.dry_run == true && '--dry-run' || '' }}
+
+      - name: Commit updated dedup state
+        if: ${{ !inputs.dry_run }}
+        run: |
+          if git diff --quiet -- cyber_bot/state/posted.json; then
+            echo "no state changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cyber_bot/state/posted.json
+          git commit -m "chore(cyber-bot): update dedup state"
+          for attempt in 1 2 3 4; do
+            if git push origin HEAD:${{ github.ref_name }}; then
+              break
+            fi
+            sleep $((2 ** attempt))
+            git pull --rebase origin ${{ github.ref_name }} || true
+          done
