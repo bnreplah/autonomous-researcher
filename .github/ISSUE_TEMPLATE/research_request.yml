@@ -1,0 +1,25 @@
+name: Cyber Research Request
+description: Ask the bot to pull recent intel on a specific topic and post a deep-dive to Discord.
+title: "[research] <your topic here>"
+labels: ["research-request"]
+body:
+  - type: input
+    id: topic
+    attributes:
+      label: Topic
+      description: One sentence — what should the bot research?
+      placeholder: "Recent npm supply-chain compromises"
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Extra context (optional)
+      description: Anything that helps the bot narrow the topic (vendor, time window, threat actor, etc.).
+      placeholder: "Focus on the last 7 days; deprioritize phishing kits."
+  - type: markdown
+    attributes:
+      value: |
+        The `topic:` line in the issue body (if present) is used as the
+        research topic. Otherwise the issue title is used with any
+        `[research]` prefix stripped.

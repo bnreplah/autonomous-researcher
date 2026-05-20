@@ -1,0 +1,94 @@
+name: Cyber Research On-Demand
+
+on:
+  issues:
+    types: [opened, labeled, edited]
+
+permissions:
+  contents: read
+  issues: write   # to reply on / close the issue
+
+jobs:
+  research:
+    if: contains(github.event.issue.labels.*.name, 'research-request')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Acknowledge issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: "🔬 Cyber Research Bot is on it. Pulling feeds, " +
+                    "reranking against your topic, and posting the deep-dive " +
+                    "to Discord shortly."
+            });
+
+      - name: Run on-demand research
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.CYBER_BOT_DISCORD_WEBHOOK_URL }}
+          CYBER_BOT_MODEL: ${{ vars.CYBER_BOT_MODEL || 'claude' }}
+          CYBER_BOT_CLAUDE_MODEL: ${{ vars.CYBER_BOT_CLAUDE_MODEL || 'claude-haiku-4-5-20251001' }}
+          CYBER_BOT_GEMINI_MODEL: ${{ vars.CYBER_BOT_GEMINI_MODEL || 'gemini-2.5-flash' }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          python -m cyber_bot.on_demand --output-summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Reply on issue with summary
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = "✅ Posted deep-dive to Discord. ";
+            try {
+              const summary = fs.readFileSync(process.env.GITHUB_STEP_SUMMARY, 'utf8');
+              if (summary && summary.length < 60000) {
+                body += "\n\n<details><summary>Report preview</summary>\n\n" +
+                        summary + "\n\n</details>";
+              }
+            } catch (e) {}
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: "closed"
+            });
+
+      - name: Reply on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: "❌ Cyber Research Bot run failed. See the workflow logs: " +
+                    `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
+                    `/actions/runs/${context.runId}`
+            });
