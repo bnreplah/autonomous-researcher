@@ -45,6 +45,34 @@ Dry run:
 python main.py "Sanity check the pipeline" --mode orchestrator --test-mode
 ```
 
+## Resource Finder (companion to `bnreplah/cybersecuritylibrary`)
+
+The `resource_finder` module turns the researcher into a curator. Point
+it at an exported `RESOURCES_DB.js` and it will:
+
+1. **Pull** — optionally fetch recent items from public security feeds
+   for grounding context (`feedparser`).
+2. **Parse** — ask Claude or Gemini to propose durable, evergreen
+   additions matching the target category's schema.
+3. **Verify** — GET each proposed URL with a short timeout and treat
+   2xx/3xx (plus 401/403/429) as reachable; capture the page `<title>`.
+4. **Emit** — write a JSON file the cybersecuritylibrary GitHub Actions
+   workflow merges into `RESOURCES_DB.js` and opens a PR for review.
+
+```bash
+python -m resource_finder.discover \
+  --existing-db existing.json \
+  --category tools \
+  --max 5 \
+  --topic "AI security" \
+  --out proposed.json
+```
+
+No Modal sandbox required — this runs on any vanilla GitHub Actions
+runner with an `ANTHROPIC_API_KEY` or `GOOGLE_API_KEY`. See
+[`resource_finder/README.md`](resource_finder/README.md) for full
+schema and flag reference.
+
 ## Deploy to Railway
 
 [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https://github.com/mattshumer/ai-researcher&referralCode=mattshumer)

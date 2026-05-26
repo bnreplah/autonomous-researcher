@@ -5,4 +5,5 @@ python-dotenv
 rich
 fastapi
 uvicorn[standard]
-python-dotenv
+requests
+feedparser

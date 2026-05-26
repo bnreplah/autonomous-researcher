@@ -1,0 +1,64 @@
+name: Resource Finder Smoke Test
+
+on:
+  pull_request:
+    paths:
+      - 'resource_finder/**'
+      - '.github/workflows/resource-finder-smoke.yml'
+      - 'requirements.txt'
+  push:
+    branches: [main]
+    paths:
+      - 'resource_finder/**'
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests feedparser python-dotenv anthropic google-genai
+      - name: Import + schema sanity
+        run: |
+          python - <<'PY'
+          import json, tempfile, sys
+          from resource_finder import schema, verify, feeds, llm, discover
+
+          # Every category has a fields list and a description.
+          for cat in schema.CATEGORIES:
+              assert schema.CATEGORY_FIELDS[cat], cat
+              assert schema.CATEGORY_DESCRIPTIONS.get(cat), cat
+
+          # _is_duplicate must catch by host AND by name.
+          existing = {
+              "tools": [
+                  {"title": "Nmap", "url": "https://nmap.org/"},
+              ],
+          }
+          titles = discover._existing_titles(existing)
+          hosts = discover._existing_hosts(existing)
+          assert discover._is_duplicate({"title": "nmap"}, titles, hosts)
+          assert discover._is_duplicate(
+              {"title": "X", "url": "https://nmap.org/book"}, titles, hosts)
+          assert not discover._is_duplicate(
+              {"title": "X", "url": "https://example.com/"}, titles, hosts)
+
+          # Missing field detection.
+          missing = discover._missing_fields({"title": "X"}, "tools")
+          assert "url" in missing and "desc" in missing, missing
+
+          # extract_json strips code fences.
+          assert llm.extract_json('```json\n{"a":1}\n```') == '{"a":1}'
+
+          print("OK")
+          PY
+      - name: CLI --help works
+        run: python -m resource_finder.discover --help
